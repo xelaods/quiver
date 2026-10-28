@@ -1,9 +1,10 @@
-# バージョンのタグ（v1.5.0 など）を push すると、Windows 用の zip を作って Releases に公開する
+# GitHub の画面で Release を公開すると、Windows 用の zip を作ってその Release に添付する
+# （Actions タブから手動で動かすと、ビルド結果を Artifacts として受け取れる）
 name: Release
 
 on:
-  push:
-    tags: ['v*']
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -32,14 +33,9 @@ jobs:
             firmware/quiver-remapper-rp2040-pizero.uf2
 
       - uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'release'
         with:
-          name: Quiver ${{ github.ref_name }}
+          tag_name: ${{ github.event.release.tag_name }}
           files: |
             dist/*.zip
             firmware/quiver-remapper-rp2040-pizero.uf2
-          body: |
-            - `Quiver-*-win.zip`：Windows 用アプリ。解凍して `Quiver.exe` を起動します（インストール不要）
-            - `quiver-remapper-rp2040-pizero.uf2`：Waveshare RP2040-PiZero 用の専用ファーム（Quiver3）
-
-            初回起動で Windows SmartScreen の警告が出たら「詳細情報」→「実行」を押してください。
