@@ -1,0 +1,269 @@
+diff --git a/firmware/src/config.cc b/firmware/src/config.cc
+index 18764e5..237d6c4 100644
+--- a/firmware/src/config.cc
++++ b/firmware/src/config.cc
+@@ -1096,6 +1096,16 @@ void handle_set_report1(uint8_t report_id, uint8_t const* buffer, uint16_t bufsi
+                     requested_secondary_index = get_expr->requested_expr_elem;
+                     break;
+                 }
++                case ConfigCommand::QUIVER_MOVE: {
++                    quiver_move_t* mv = (quiver_move_t*) config_buffer->data;
++                    quiver_move(mv->dx, mv->dy, mv->step, mv->flags);
++                    break;
++                }
++                case ConfigCommand::QUIVER_SET_REGISTER: {
++                    quiver_set_register_t* sr = (quiver_set_register_t*) config_buffer->data;
++                    quiver_set_register(sr->reg, sr->value);
++                    break;
++                }
+                 case ConfigCommand::SET_MONITOR_ENABLED: {
+                     monitor_t* monitor = (monitor_t*) config_buffer->data;
+                     set_monitor_enabled(monitor->enabled);
+diff --git a/firmware/src/our_descriptor.cc b/firmware/src/our_descriptor.cc
+index 0902867..ceb543c 100644
+--- a/firmware/src/our_descriptor.cc
++++ b/firmware/src/our_descriptor.cc
+@@ -8,6 +8,7 @@
+ const uint8_t REPORT_ID_MOUSE = 1;
+ const uint8_t REPORT_ID_KEYBOARD = 2;
+ const uint8_t REPORT_ID_CONSUMER = 3;
++const uint8_t REPORT_ID_GAMEPAD = 4;  // Quiver: キーボード・マウスと同居するゲームパッド
+ 
+ const uint8_t our_report_descriptor_kb_mouse[] = {
+     0x05, 0x01,                // Usage Page (Generic Desktop Ctrls)
+@@ -136,6 +137,46 @@ const uint8_t our_report_descriptor_kb_mouse[] = {
+     0x95, 0x01,                //   Report Count (1)
+     0x81, 0x02,                //   Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+     0xC0,                      // End Collection
++
++    // ---- Quiver: ゲームパッド（マウスと重ならないよう、ボタン9〜24と Rx/Ry/Z/Rz を使う）----
++    0x05, 0x01,                // Usage Page (Generic Desktop Ctrls)
++    0x09, 0x05,                // Usage (Game Pad)
++    0xA1, 0x01,                // Collection (Application)
++    0x85, REPORT_ID_GAMEPAD,   //   Report ID (REPORT_ID_GAMEPAD)
++    0x05, 0x09,                //   Usage Page (Button)
++    0x19, 0x09,                //   Usage Minimum (0x09)
++    0x29, 0x18,                //   Usage Maximum (0x18)
++    0x15, 0x00,                //   Logical Minimum (0)
++    0x25, 0x01,                //   Logical Maximum (1)
++    0x75, 0x01,                //   Report Size (1)
++    0x95, 0x10,                //   Report Count (16)
++    0x81, 0x02,                //   Input (Data,Var,Abs)
++    0x05, 0x01,                //   Usage Page (Generic Desktop Ctrls)
++    0x09, 0x39,                //   Usage (Hat switch)
++    0x15, 0x00,                //   Logical Minimum (0)
++    0x25, 0x07,                //   Logical Maximum (7)
++    0x35, 0x00,                //   Physical Minimum (0)
++    0x46, 0x3B, 0x01,          //   Physical Maximum (315)
++    0x65, 0x14,                //   Unit (Degrees)
++    0x75, 0x04,                //   Report Size (4)
++    0x95, 0x01,                //   Report Count (1)
++    0x81, 0x42,                //   Input (Data,Var,Abs,Null State)
++    0x65, 0x00,                //   Unit (None)
++    0x75, 0x04,                //   Report Size (4)
++    0x95, 0x01,                //   Report Count (1)
++    0x81, 0x03,                //   Input (Const)
++    0x09, 0x33,                //   Usage (Rx)  左スティック横
++    0x09, 0x34,                //   Usage (Ry)  左スティック縦
++    0x09, 0x32,                //   Usage (Z)   右スティック横
++    0x09, 0x35,                //   Usage (Rz)  右スティック縦
++    0x15, 0x00,                //   Logical Minimum (0)
++    0x26, 0xFF, 0x00,          //   Logical Maximum (255)
++    0x35, 0x00,                //   Physical Minimum (0)
++    0x46, 0xFF, 0x00,          //   Physical Maximum (255)
++    0x75, 0x08,                //   Report Size (8)
++    0x95, 0x04,                //   Report Count (4)
++    0x81, 0x02,                //   Input (Data,Var,Abs)
++    0xC0,                      // End Collection
+ };
+ 
+ const uint8_t our_report_descriptor_absolute[] = {
+@@ -561,6 +602,28 @@ bool kb_mouse_should_cause_wakeup(uint8_t report_id, const uint8_t* buffer, uint
+     return false;
+ }
+ 
++static const uint8_t quiver_gamepad_neutral[] = { 0x00, 0x00, 0x08, 0x80, 0x80, 0x80, 0x80 };
++
++void kb_mouse_clear_report(uint8_t* report, uint8_t report_id, uint16_t len) {
++    if ((report_id == REPORT_ID_GAMEPAD) && (len >= sizeof(quiver_gamepad_neutral))) {
++        memcpy(report, quiver_gamepad_neutral, sizeof(quiver_gamepad_neutral));
++    } else {
++        memset(report, 0, len);
++    }
++}
++
++int32_t kb_mouse_default_value(uint32_t usage) {
++    switch (usage) {
++        case 0x00010032:
++        case 0x00010033:
++        case 0x00010034:
++        case 0x00010035:
++            return 0x80;
++        default:
++            return 0;
++    }
++}
++
+ static const uint8_t horipad_neutral[] = { 0x00, 0x00, 0x0F, 0x80, 0x80, 0x80, 0x80, 0x00 };
+ 
+ void horipad_clear_report(uint8_t* report, uint8_t report_id, uint16_t len) {
+@@ -638,6 +701,8 @@ const our_descriptor_def_t our_descriptors[] = {
+         .handle_get_report = kb_mouse_handle_get_report,
+         .handle_set_report = kb_mouse_handle_set_report,
+         .set_report_synchronous = kb_mouse_set_report_synchronous,
++        .clear_report = kb_mouse_clear_report,
++        .default_value = kb_mouse_default_value,
+         .should_cause_wakeup = kb_mouse_should_cause_wakeup,
+     },
+     {
+diff --git a/firmware/src/our_descriptor.h b/firmware/src/our_descriptor.h
+index e09a03a..b8f7d98 100644
+--- a/firmware/src/our_descriptor.h
++++ b/firmware/src/our_descriptor.h
+@@ -11,7 +11,7 @@
+ #define REPORT_ID_CONFIG 100
+ #define REPORT_ID_MONITOR 101
+ 
+-#define MAX_INPUT_REPORT_ID 3
++#define MAX_INPUT_REPORT_ID 4
+ 
+ #define NOUR_DESCRIPTORS 6
+ 
+diff --git a/firmware/src/remapper.cc b/firmware/src/remapper.cc
+index c1a5073..fbcd0d8 100644
+--- a/firmware/src/remapper.cc
++++ b/firmware/src/remapper.cc
+@@ -113,6 +113,36 @@ uint8_t monitor_report_idx = 0;
+ 
+ #define NREGISTERS 32
+ int32_t registers[NREGISTERS] = { 0 };
++
++void quiver_set_register(uint8_t reg, int32_t value) {
++    if ((reg >= 1) && (reg <= NREGISTERS)) {
++        registers[reg - 1] = value;
++    }
++}
++
++// Quiver: PCから頼まれたマウス移動（まだ出していない残り）
++static int32_t quiver_move_x = 0;
++static int32_t quiver_move_y = 0;
++static int32_t quiver_move_step = 0;
++
++void quiver_move(int16_t dx, int16_t dy, uint16_t step, uint8_t flags) {
++    if (flags & 1) {
++        quiver_move_x = 0;
++        quiver_move_y = 0;
++    }
++    // 送り過ぎで溢れないよう、未処理の量に上限をかける
++    quiver_move_x = std::max<int32_t>(-100000, std::min<int32_t>(100000, quiver_move_x + dx));
++    quiver_move_y = std::max<int32_t>(-100000, std::min<int32_t>(100000, quiver_move_y + dy));
++    quiver_move_step = step;
++}
++
++static inline int32_t quiver_take(int32_t& remaining, int32_t step) {
++    int32_t lim = (step > 0) ? step : 2000;  // 1フレームで出せる上限（16bitの範囲に収める）
++    int32_t v = std::max<int32_t>(-lim, std::min<int32_t>(lim, remaining));
++    remaining -= v;
++    return v;
++}
++
+ std::vector<register_ptrs_t> register_ptrs;
+ uint8_t port_register = 0;
+ 
+@@ -1372,6 +1402,19 @@ void process_mapping(bool auto_repeat) {
+         *state = 0;
+     }
+ 
++    // Quiver: PCから頼まれた移動を、マウスの相対移動として少しずつ出す
++    // （キーボード・マウスとして見えている種類のときだけ）
++    if (((quiver_move_x != 0) || (quiver_move_y != 0)) && (our_descriptor_number == 0)) {
++        int32_t sx = quiver_take(quiver_move_x, quiver_move_step);
++        int32_t sy = quiver_take(quiver_move_y, quiver_move_step);
++        if (sx != 0) {
++            accumulated[0x00010030] += sx * 1000;
++        }
++        if (sy != 0) {
++            accumulated[0x00010031] += sy * 1000;
++        }
++    }
++
+     for (auto& [usage, accumulated_val] : accumulated) {
+         if (accumulated_val == 0) {
+             continue;
+@@ -1983,6 +2026,10 @@ void parse_our_descriptor() {
+         memset(report_masks_relative[report_id], 0, size);
+         report_masks_absolute[report_id] = new uint8_t[size];
+         memset(report_masks_absolute[report_id], 0, size);
++        // 最初のレポートから中立値（スティック中央など）にしておく
++        if (our_descriptor->clear_report != nullptr) {
++            our_descriptor->clear_report(reports[report_id], report_id, size);
++        }
+ 
+         report_ids.push_back(report_id);
+     }
+diff --git a/firmware/src/remapper.h b/firmware/src/remapper.h
+index fc6226f..b19ec5c 100644
+--- a/firmware/src/remapper.h
++++ b/firmware/src/remapper.h
+@@ -56,4 +56,7 @@ void descriptor_received_callback(uint16_t vendor_id, uint16_t product_id, const
+ void report_received_callback(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len);
+ void umount_callback(uint8_t dev_addr, uint8_t instance);
+ 
++void quiver_set_register(uint8_t reg, int32_t value);
++void quiver_move(int16_t dx, int16_t dy, uint16_t step, uint8_t flags);
++
+ #endif
+diff --git a/firmware/src/tinyusb_stuff.cc b/firmware/src/tinyusb_stuff.cc
+index 52a49a4..8636d8d 100644
+--- a/firmware/src/tinyusb_stuff.cc
++++ b/firmware/src/tinyusb_stuff.cc
+@@ -48,7 +48,7 @@ tusb_desc_device_t desc_device = {
+ 
+     .idVendor = USB_VID,
+     .idProduct = USB_PID,
+-    .bcdDevice = 0x0100,
++    .bcdDevice = 0x0101,
+ 
+     .iManufacturer = 0x01,
+     .iProduct = 0x02,
+@@ -109,7 +109,7 @@ char const* string_desc_arr[] = {
+ #else
+     "RP2040",  // 1: Manufacturer
+ #endif
+-    "HID Remapper XXXX",  // 2: Product
++    "HID Remapper Quiver3 XXXX",  // 2: Product
+     "123456789012",       // 3: Serial Number
+ };
+ 
+diff --git a/firmware/src/types.h b/firmware/src/types.h
+index 3bfa1be..889443b 100644
+--- a/firmware/src/types.h
++++ b/firmware/src/types.h
+@@ -32,6 +32,8 @@ enum class ConfigCommand : int8_t {
+     CLEAR_QUIRKS = 23,
+     ADD_QUIRK = 24,
+     GET_QUIRK = 25,
++    QUIVER_SET_REGISTER = 64,  // Quiver: PCからレジスタ（モード切り替えなど）を書き換える
++    QUIVER_MOVE = 65,          // Quiver: PCからマウスカーソルを動かす
+ };
+ 
+ struct usage_def_t {
+@@ -415,6 +417,18 @@ struct __attribute__((packed)) persist_config_response_t {
+     PersistConfigReturnCode return_code;
+ };
+ 
++struct __attribute__((packed)) quiver_set_register_t {
++    uint8_t reg;    // 1始まり
++    int32_t value;  // 式の中と同じく1000倍の値
++};
++
++struct __attribute__((packed)) quiver_move_t {
++    int16_t dx;       // 動かす量（カウント）
++    int16_t dy;
++    uint16_t step;    // 1ms（1フレーム）あたりの最大の移動量。0なら一度に動かす
++    uint8_t flags;    // bit0: 未処理の移動を捨ててから動かす
++};
++
+ struct __attribute__((packed)) monitor_t {
+     uint8_t enabled;
+ };

@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  <title>Quiver</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="titlebar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 12h3l2.2-6 3.6 12 3-9 1.7 3H21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="brand-name">Quiver</span>
+      <span class="brand-tag">for HID Remapper</span>
+    </div>
+    <nav class="nav" id="nav">
+      <span class="nav-pill"></span>
+      <button data-page="shake">
+        <svg viewBox="0 0 16 16"><path d="M1.5 8h2.5l1.5-4 2.5 8 2-6 1.2 2h3.3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>揺れ
+      </button>
+      <button data-page="controller">
+        <svg viewBox="0 0 16 16"><path d="M4.6 4.5h6.8a3 3 0 0 1 2.9 2.3l.7 3.1a1.7 1.7 0 0 1-2.9 1.5L10.7 10H5.3l-1.4 1.4A1.7 1.7 0 0 1 1 9.9l.7-3.1a3 3 0 0 1 2.9-2.3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5 6.4v2M4 7.4h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="10.8" cy="6.9" r=".8" fill="currentColor"/><circle cx="12" cy="8.1" r=".8" fill="currentColor"/></svg>コントローラー
+      </button>
+      <button data-page="auto">
+        <svg viewBox="0 0 16 16"><rect x="1.8" y="3" width="12.4" height="8.4" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 13.6h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M5.2 7.2 7 9l3.8-3.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>自動切り替え
+      </button>
+      <button data-page="settings">
+        <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7L3.6 3.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>設定
+      </button>
+    </nav>
+    <div class="tb-right">
+      <div class="paused-badge" id="pausedBadge"><span class="pz"></span>一時停止中</div>
+      <div class="device-chip" id="deviceChip" data-state="off">
+        <span class="pulse"></span><span id="chipText">未接続</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout page" data-page="shake">
+    <!-- 左：プレビュー -->
+    <section class="stage">
+      <div class="card preview-card">
+        <div class="card-head">
+          <div>
+            <h2>軌跡プレビュー</h2>
+            <p class="sub">書き込む式をそのまま計算して描いています</p>
+          </div>
+          <div class="head-actions">
+            <div class="seg" id="speedSeg" role="tablist">
+              <span class="seg-pill"></span>
+              <button data-v="1" role="tab">実速</button>
+              <button data-v="0.1" role="tab">1/10</button>
+              <button data-v="0.02" role="tab">1/50</button>
+            </div>
+          </div>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="preview"></canvas>
+          <div class="live-badge" id="liveBadge"><span class="dot"></span>作動中</div>
+          <div class="scale-note" id="scaleNote">1マス = 5カウント</div>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><span class="stat-label">揺れ幅</span><span class="stat-value"><b id="stAmp">0</b><i>カウント</i></span></div>
+        <div class="stat"><span class="stat-label">周波数</span><span class="stat-value"><b id="stHz">0</b><i>Hz</i></span></div>
+        <div class="stat"><span class="stat-label">方向</span><span class="stat-value"><b id="stAngle">0</b><i>°</i></span></div>
+        <div class="stat"><span class="stat-label">最大移動</span><span class="stat-value"><b id="stSpeed">0</b><i>/ms</i></span></div>
+      </div>
+    </section>
+
+    <!-- 右：設定 -->
+    <aside class="panel">
+      <div class="panel-scroll">
+        <div class="card device" id="deviceCard" data-state="off">
+          <div class="device-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="9" r="1.4" fill="currentColor"/><circle cx="15" cy="9" r="1.4" fill="currentColor"/><path d="M8 15h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </div>
+          <div class="device-text">
+            <span class="device-name" id="deviceName">未接続</span>
+            <span class="device-status"><span class="pulse"></span><span id="deviceStatus">HID Remapperを接続してください</span></span>
+          </div>
+          <button class="btn ghost sm" id="connectBtn">接続</button>
+        </div>
+
+        <section class="group">
+          <h3>トリガー</h3>
+          <div class="trigger-row">
+            <div class="field">
+              <label>押したまま</label>
+              <div class="select" id="holdSelect"></div>
+            </div>
+            <span class="plus">＋</span>
+            <div class="field">
+              <label>押すと作動</label>
+              <div class="select" id="triggerSelect"></div>
+            </div>
+          </div>
+          <div class="keys">
+            <span class="key" id="keyHold">R</span>
+            <span class="key-plus">+</span>
+            <span class="key" id="keyTrigger">L</span>
+            <span class="keys-note" id="keysNote">接続するとボタンの状態がここに表示されます</span>
+          </div>
+        </section>
+
+        <section class="group">
+          <h3>動き方</h3>
+          <div class="seg wide" id="modeSeg" role="tablist">
+            <span class="seg-pill"></span>
+            <button data-v="sharp" role="tab">
+              <svg viewBox="0 0 40 14"><path d="M2 12V2h9v10h9V2h9v10h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+              シャープ
+            </button>
+            <button data-v="smooth" role="tab">
+              <svg viewBox="0 0 40 14"><path d="M2 7c4-7 6-7 9 0s5 7 9 0 6-7 9 0 5 7 9 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              スムーズ
+            </button>
+          </div>
+          <p class="hint" id="modeHint"></p>
+        </section>
+
+        <section class="group">
+          <div class="slider" data-key="amplitude" data-min="1" data-max="30" data-step="0.5">
+            <div class="slider-head"><span>揺れ幅</span><output></output></div>
+            <input type="range" />
+          </div>
+          <div class="slider" data-key="frequency" data-min="2" data-max="100" data-step="1">
+            <div class="slider-head"><span>速さ</span><output></output></div>
+            <input type="range" />
+          </div>
+          <div class="slider" data-key="randomness" data-min="0" data-max="80" data-step="1">
+            <div class="slider-head"><span>ランダムさ</span><output></output></div>
+            <input type="range" />
+          </div>
+        </section>
+
+        <section class="group">
+          <h3>方向</h3>
+          <div class="angle">
+            <div class="dial" id="dial" tabindex="0" role="slider" aria-label="方向" aria-valuemin="-90" aria-valuemax="90">
+              <svg viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="52" class="dial-ring" />
+                <g class="dial-ticks"></g>
+                <line id="dialAxis" x1="14" y1="60" x2="106" y2="60" class="dial-axis" />
+                <circle id="dialKnobA" cx="106" cy="60" r="6" class="dial-knob" />
+                <circle id="dialKnobB" cx="14" cy="60" r="4" class="dial-knob ghost" />
+                <circle cx="60" cy="60" r="3" class="dial-center" />
+              </svg>
+            </div>
+            <div class="angle-side">
+              <div class="angle-value"><b id="angleValue">0</b>°</div>
+              <div class="chips" id="angleChips">
+                <button data-a="0">左右</button>
+                <button data-a="45">右上↔左下</button>
+                <button data-a="-45">左上↔右下</button>
+                <button data-a="90">上下</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="group">
+          <div class="group-head">
+            <h3>プリセット</h3>
+            <button class="btn text sm" id="savePreset">＋ 今の設定を保存</button>
+          </div>
+          <div class="presets" id="presets"></div>
+        </section>
+
+        <section class="group">
+          <button class="accordion" id="advToggle" aria-expanded="false">
+            <span>生成される式</span>
+            <svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="accordion-body" id="advBody"><div class="accordion-body-inner">
+            <div class="code-block">
+              <div class="code-head"><span>Expression 1 → Cursor X</span><button class="copy" data-copy="expr1">コピー</button></div>
+              <code id="expr1"></code>
+            </div>
+            <div class="code-block">
+              <div class="code-head"><span>Expression 2 → Cursor Y</span><button class="copy" data-copy="expr2">コピー</button></div>
+              <code id="expr2"></code>
+            </div>
+            <p class="hint">書き込むと、HID Remapperに入っている既存の設定はこの内容で上書きされます。</p>
+          </div></div>
+        </section>
+      </div>
+
+      <footer class="panel-foot">
+        <label class="switch">
+          <input type="checkbox" id="enabled" checked />
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          <span class="switch-label" id="enabledLabel">有効</span>
+        </label>
+        <button class="btn primary morph" id="writeBtn" disabled>
+          <span class="morph-progress"></span>
+          <span class="morph-label" data-s="idle">デバイスに書き込む</span>
+          <span class="morph-label" data-s="busy"><span class="spinner"></span>書き込み中</span>
+          <span class="morph-label" data-s="done"><svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>保存しました</span>
+          <span class="morph-label" data-s="error">もう一度試す</span>
+        </button>
+      </footer>
+    </aside>
+  </main>
+
+  <!-- ================= コントローラー ================= -->
+  <main class="ctl-layout page" data-page="controller">
+    <section class="card map-card">
+      <div class="card-head">
+        <div>
+          <h2>マッピング</h2>
+          <p class="sub" id="mapSub">キーやボタンを選んで、右側でコントローラーの入力を割り当てます</p>
+        </div>
+        <div class="seg" id="srcSeg" role="tablist">
+          <span class="seg-pill"></span>
+          <button data-v="keyboard" role="tab">キーボード</button>
+          <button data-v="mouse" role="tab">マウス</button>
+        </div>
+      </div>
+      <div class="map-stage">
+        <div class="map-view" data-view="keyboard">
+          <div class="kbd" id="kbd"></div>
+          <p class="map-tip"><kbd>キーを押す</kbd>とそのキーが選ばれます</p>
+        </div>
+        <div class="map-view" data-view="mouse">
+          <div class="mouse-wrap" id="mouseWrap"></div>
+        </div>
+      </div>
+      <div class="map-legend">
+        <span><i class="lg lg-mapped"></i>割り当て済み</span>
+        <span><i class="lg lg-off"></i>オフ</span>
+        <span><i class="lg lg-pause"></i>一時停止キー</span>
+        <span class="legend-count" id="mapCount"></span>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="panel-scroll">
+        <section class="inspector" id="inspector"></section>
+        <section class="group">
+          <div class="group-head">
+            <h3>割り当て一覧</h3>
+            <span class="count-pill" id="listCount">0</span>
+          </div>
+          <div class="map-list" id="mapList"></div>
+        </section>
+      </div>
+      <footer class="panel-foot">
+        <label class="switch">
+          <input type="checkbox" id="ctlEnabled" />
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          <span class="switch-label" id="ctlEnabledLabel">オフ</span>
+        </label>
+        <button class="btn primary morph" id="ctlWriteBtn" disabled data-state="idle">
+          <span class="morph-progress"></span>
+          <span class="morph-label" data-s="idle">デバイスに書き込む</span>
+          <span class="morph-label" data-s="busy"><span class="spinner"></span>書き込み中</span>
+          <span class="morph-label" data-s="done"><svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>保存しました</span>
+          <span class="morph-label" data-s="error">もう一度試す</span>
+        </button>
+      </footer>
+    </aside>
+  </main>
+
+  <!-- ================= 自動切り替え ================= -->
+  <main class="ctl-layout page" data-page="auto">
+    <section class="card ref-card">
+      <div class="card-head">
+        <div class="ref-title">
+          <h2>参考画像</h2>
+          <input class="name-input" id="ruleName" type="text" maxlength="40" placeholder="画面の名前" />
+        </div>
+        <div class="head-actions">
+          <button class="btn ghost sm" id="importShot">画像を読み込む</button>
+          <button class="btn primary sm" id="captureShot"><span id="captureLabel">今の画面を撮る</span></button>
+          <input type="file" id="shotFile" accept="image/*" hidden />
+        </div>
+      </div>
+      <div class="ref-stage" id="refStage">
+        <div class="ref-canvas" id="refCanvas">
+          <img id="refImg" alt="" draggable="false" />
+          <div class="ref-region" id="refRegion"><span class="rg-tag">判定する範囲</span></div>
+        </div>
+        <div class="ref-empty" id="refEmpty">
+          <div class="re-ic"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 20h8M9 9h6v4H9z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <h3>切り替えたい画面を登録しましょう</h3>
+          <p class="sub">「今の画面を撮る」を押して3秒以内にその画面を開くか、スクリーンショットを読み込みます。そのあと、その画面だけに出る部分（アイコンや文字など）をドラッグで囲みます。</p>
+          <button class="btn primary sm" id="emptyAdd">＋ 画面を追加</button>
+        </div>
+        <div class="countdown" id="countdown"><b></b><span>この画面に切り替えてください</span></div>
+      </div>
+      <div class="ref-foot" id="refFoot">
+        <div class="cmp">
+          <div class="cmp-item"><canvas id="tplView" width="96" height="54"></canvas><span>参考画像</span></div>
+          <div class="cmp-item"><canvas id="liveView" width="96" height="54"></canvas><span>いまの画面</span></div>
+        </div>
+        <div class="match">
+          <div class="match-top">
+            <span class="match-label">一致率</span>
+            <span class="match-val"><b id="matchVal">--</b>%</span>
+          </div>
+          <div class="meter big" id="matchMeter"><span class="meter-fill"></span><span class="meter-th"></span></div>
+          <div class="slider th-slider">
+            <div class="slider-head"><span>この一致率以上で切り替える</span><output id="thOut"></output></div>
+            <input type="range" id="thRange" min="50" max="99" step="1" />
+          </div>
+        </div>
+        <div class="to-mode">
+          <span class="to-label">一致したら</span>
+          <div class="seg" id="ruleModeSeg" role="tablist">
+            <span class="seg-pill"></span>
+            <button data-v="kbm">キーボード・マウス</button>
+            <button data-v="ctl">コントローラー</button>
+          </div>
+          <button class="btn text sm danger-text" id="deleteRule">この画面を削除</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="panel-scroll">
+        <div class="card auto-status" id="autoStatus" data-state="off">
+          <div class="as-top">
+            <div class="as-text">
+              <span class="as-title">自動切り替え</span>
+              <span class="as-sub" id="autoSub">オフ</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="autoEnabled" />
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+          </div>
+          <div class="as-now">
+            <span class="as-mode" id="autoMode">--</span>
+            <span class="as-hit" id="autoHit">一致している画面はありません</span>
+          </div>
+          <p class="as-warn" id="autoWarn" hidden></p>
+        </div>
+
+        <section class="group">
+          <div class="group-head">
+            <h3>登録した画面</h3>
+            <button class="btn text sm" id="addRule">＋ 画面を追加</button>
+          </div>
+          <div class="rule-list" id="ruleList"></div>
+        </section>
+
+        <section class="group">
+          <h3>判定の設定</h3>
+          <div class="field-row">
+            <span>見る画面</span>
+            <div class="select" id="screenSelect"></div>
+          </div>
+          <div class="field-col">
+            <span>どれにも一致しないとき</span>
+            <div class="seg wide" id="fallbackSeg" role="tablist">
+              <span class="seg-pill"></span>
+              <button data-v="none">そのまま</button>
+              <button data-v="kbm">キーボード・マウス</button>
+              <button data-v="ctl">コントローラー</button>
+            </div>
+          </div>
+          <div class="slider" id="intervalSlider">
+            <div class="slider-head"><span>判定の間隔</span><output></output></div>
+            <input type="range" min="100" max="1000" step="50" />
+          </div>
+          <div class="slider" id="stableSlider">
+            <div class="slider-head"><span>切り替えまでの連続一致</span><output></output></div>
+            <input type="range" min="1" max="6" step="1" />
+          </div>
+          <label class="check-row">
+            <span>閉じてもタスクトレイで動かし続ける</span>
+            <span class="switch mini"><input type="checkbox" id="keepAlive" /><span class="switch-track"><span class="switch-thumb"></span></span></span>
+          </label>
+        </section>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ================= 設定 ================= -->
+  <main class="settings page" data-page="settings">
+    <div class="settings-inner">
+      <header class="settings-head">
+        <h1>設定</h1>
+        <p class="sub">コントローラーモードの動作と、アプリのデータを管理します</p>
+      </header>
+
+      <section class="card s-card">
+        <div class="s-title"><h2>コントローラーの種類</h2><p class="sub">PCや機器にどのコントローラーとして見せるかを選びます</p></div>
+        <div class="type-grid" id="typeGrid"></div>
+      </section>
+
+      <section class="card s-card">
+        <div class="s-row">
+          <div class="s-title"><h2 id="pauseTitle">一時停止キー</h2><p class="sub" id="pauseDesc"></p></div>
+          <div class="s-ctrl">
+            <button class="keycap-btn" id="pauseKeyBtn"></button>
+            <button class="btn text sm" id="pauseKeyClear">なし</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card s-card">
+        <div class="s-title"><h2>マウスの移動</h2><p class="sub">マウスの動きをスティックの倒し具合に変換します</p></div>
+        <div class="s-mouse" id="settingsMouse"></div>
+      </section>
+
+      <section class="card s-card">
+        <div class="s-title"><h2>データ</h2><p class="sub">割り当てを書き出して保存したり、別のPCで読み込んだりできます</p></div>
+        <div class="s-actions">
+          <button class="btn ghost sm" id="exportBtn">書き出す（JSON）</button>
+          <button class="btn ghost sm" id="importBtn">読み込む</button>
+          <input type="file" id="importFile" accept="application/json,.json" hidden />
+          <span class="s-spacer"></span>
+          <button class="btn ghost sm" id="resetBtn">初期配置に戻す</button>
+          <button class="btn ghost sm danger" id="clearBtn">すべての割り当てを消す</button>
+        </div>
+      </section>
+
+      <section class="card s-card api-card" id="apiCard">
+        <div class="s-row">
+          <div class="s-title">
+            <h2>外部ソフトから操作（API）</h2>
+            <p class="sub">ほかのソフトから座標を送って、マウスカーソルを本物のマウス入力として動かします。待ち受けはこのPCの中（127.0.0.1）だけです</p>
+          </div>
+          <label class="switch"><input type="checkbox" id="apiEnabled" /><span class="switch-track"><span class="switch-thumb"></span></span></label>
+        </div>
+        <div class="api-status" id="apiStatus" data-state="off"><span class="pulse"></span><span id="apiStatusText">オフ</span></div>
+        <div class="api-grid">
+          <div class="api-field">
+            <span class="api-label">アドレス</span>
+            <div class="api-val"><code id="apiUrl"></code><button class="copy" data-copy-api="url">コピー</button></div>
+          </div>
+          <div class="api-field">
+            <span class="api-label">ポート</span>
+            <div class="api-val"><input class="num api-port" id="apiPort" type="number" min="1024" max="65535" step="1" /></div>
+          </div>
+          <div class="api-field wide">
+            <span class="api-label">トークン（リクエストのヘッダー X-Quiver-Token に入れます）</span>
+            <div class="api-val">
+              <code id="apiToken" class="secret"></code>
+              <button class="copy" id="apiTokenShow">表示</button>
+              <button class="copy" data-copy-api="token">コピー</button>
+              <button class="copy" id="apiTokenNew">作り直す</button>
+            </div>
+          </div>
+        </div>
+        <div class="api-test">
+          <span class="api-label">テスト</span>
+          <button class="btn ghost sm" id="apiTestCenter">画面の中央へ動かす</button>
+          <button class="btn ghost sm" id="apiTestCircle">小さく円を描く</button>
+          <span class="api-cursor" id="apiCursor"></span>
+        </div>
+        <div class="api-code">
+          <div class="api-code-head">
+            <div class="seg" id="apiLang" role="tablist">
+              <span class="seg-pill"></span>
+              <button data-v="py">Python</button>
+              <button data-v="curl">curl</button>
+              <button data-v="ref">命令一覧</button>
+            </div>
+            <button class="copy" id="apiCopySample">コピー</button>
+          </div>
+          <pre class="api-pre"><code id="apiSample"></code></pre>
+        </div>
+        <div class="api-log-wrap">
+          <span class="api-label">最近のリクエスト</span>
+          <div class="api-log" id="apiLog"><p class="empty">まだありません</p></div>
+        </div>
+      </section>
+
+      <section class="card s-card about">
+        <div class="about-mark">
+          <svg viewBox="0 0 24 24"><path d="M3 12h3l2.2-6 3.6 12 3-9 1.7 3H21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="s-title">
+          <h2>Quiver 1.5.0</h2>
+          <p class="sub">HID Remapper（設定バージョン18 / r2026系ファーム）に対応。Quiver専用ファームなら、切り替えキーでキーボード・マウスとコントローラーを挿し直しなしに切り替えられます。</p>
+        </div>
+        <a class="btn ghost sm" href="https://www.remapper.org/" target="_blank">HID Remapper</a>
+      </section>
+    </div>
+  </main>
+
+  <div class="modal" id="confirmModal" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true">
+      <h3 id="confirmTitle"></h3>
+      <p class="sub" id="confirmText"></p>
+      <div class="modal-actions">
+        <button class="btn ghost sm" id="confirmCancel">キャンセル</button>
+        <button class="btn primary sm" id="confirmOk">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <script src="crc.js"></script>
+  <script src="expr.js"></script>
+  <script src="remapper.js"></script>
+  <script src="controller-data.js"></script>
+  <script src="app.js"></script>
+  <script src="controller.js"></script>
+  <script src="autoswitch.js"></script>
+  <script src="api-ui.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "name": "quiver",
+  "productName": "Quiver",
+  "version": "1.5.0",
+  "description": "HID Remapper用のマウス揺れ設定アプリ",
+  "main": "main.js",
+  "author": "xelaods",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win zip --x64"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.xelaods.quiver",
+    "productName": "Quiver",
+    "files": ["main.js", "preload.js", "api.js", "src/**/*", "build/icon.png"],
+    "directories": { "output": "dist" },
+    "win": {
+      "target": ["zip"],
+      "icon": "build/icon.png",
+      "signAndEditExecutable": false
+    }
+  }
+}
